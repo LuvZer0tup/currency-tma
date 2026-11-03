@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Облік закупівлі валюти</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --bg2: var(--tg-theme-secondary-bg-color, #f1f3f5);
+    --text: var(--tg-theme-text-color, #111111);
+    --hint: var(--tg-theme-hint-color, #7d8590);
+    --link: var(--tg-theme-link-color, #2481cc);
+    --btn: var(--tg-theme-button-color, #2481cc);
+    --btn-text: var(--tg-theme-button-text-color, #ffffff);
+    --green: #2ea44f;
+    --red: #e5484d;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg2);
+    color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+    min-height: 100vh;
+  }
+  .wrap { max-width: 520px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 4px 0 4px; }
+  .sub { color: var(--hint); font-size: 14px; margin: 0 0 16px; }
+  .card { background: var(--bg); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+  label { display: block; font-size: 13px; color: var(--hint); margin: 0 0 6px; }
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  input, select {
+    width: 100%; padding: 12px 14px; font-size: 16px; color: var(--text);
+    background: var(--bg2); border: 2px solid transparent; border-radius: 10px;
+    outline: none; appearance: none; -webkit-appearance: none;
+  }
+  input:focus, select:focus { border-color: var(--btn); }
+  .row { display: flex; gap: 10px; }
+  .row .field { flex: 1; }
+  button {
+    width: 100%; padding: 14px; font-size: 16px; font-weight: 600;
+    color: var(--btn-text); background: var(--btn);
+    border: 0; border-radius: var(--radius); cursor: pointer;
+  }
+  button:disabled { opacity: .6; cursor: default; }
+  .err { color: var(--red); font-size: 14px; margin: 10px 2px 0; min-height: 18px; }
+  .result { display: none; }
+  .result.show { display: block; }
+  .line { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--bg2); }
+  .line:last-of-type { border-bottom: 0; }
+  .line span:first-child { color: var(--hint); }
+  .line span:last-child { font-weight: 600; text-align: right; }
+  .profit { font-size: 26px; font-weight: 700; margin: 6px 0 2px; }
+  .profit.pos { color: var(--green); }
+  .profit.neg { color: var(--red); }
+  .ai-title { font-size: 13px; color: var(--hint); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .ai-text { white-space: pre-wrap; }
+  .note { font-size: 12px; color: var(--hint); margin-top: 10px; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>💱 Облік закупівлі валюти</h1>
+  <p class="sub">Калькулятор прибутку та ШІ-прогноз курсу (відносно гривні, дані НБУ)</p>
+
+  <form id="form" class="card" novalidate>
+    <div class="field">
+      <label for="currency">Валюта</label>
+      <select id="currency">
+        <option value="USD">USD — долар США</option>
+        <option value="EUR">EUR — євро</option>
+        <option value="PLN">PLN — злотий</option>
+        <option value="GBP">GBP — фунт стерлінгів</option>
+      </select>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="amount">Сума закупівлі</label>
+        <input id="amount" type="text" inputmode="decimal" placeholder="1000" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="rate">Курс купівлі, ₴</label>
+        <input id="rate" type="text" inputmode="decimal" placeholder="41.50" autocomplete="off">
+      </div>
+    </div>
+    <div class="field">
+      <label for="commission">Комісія при продажу, % (необов'язково)</label>
+      <input id="commission" type="text" inputmode="decimal" placeholder="0" autocomplete="off">
+    </div>
+    <button id="btn" type="submit">Розрахувати та отримати прогноз</button>
+    <div class="err" id="err"></div>
+  </form>
+
+  <div id="result" class="result">
+    <div class="card">
+      <div class="line"><span>Загальні вкладення</span><span id="r-invested">—</span></div>
+      <div class="line"><span>Поточний курс НБУ</span><span id="r-current">—</span></div>
+      <div class="line"><span>Прогнозований курс (7 днів)</span><span id="r-forecast">—</span></div>
+      <div class="line"><span>Виручка за прогнозом</span><span id="r-revenue">—</span></div>
+      <div style="margin-top:10px">
+        <div style="color:var(--hint);font-size:13px">Потенційний чистий прибуток</div>
+        <div class="profit" id="r-profit">—</div>
+        <div style="color:var(--hint);font-size:13px" id="r-pct"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="ai-title">🤖 <span id="ai-source">ШІ-аналітика</span></div>
+      <div class="ai-text" id="ai-text"></div>
+      <div class="note">Це не фінансова порада. Прогноз орієнтовний і не гарантує результат.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) {
+    tg.ready();
+    tg.expand();
+    try {
+      tg.setHeaderColor('secondary_bg_color');
+      tg.setBackgroundColor('secondary_bg_color');
+    } catch (e) {}
+  }
+
+  // Якщо фронтенд і бекенд на одному домені — залиште порожнім.
+  const API_BASE = '';
+
+  const $ = (id) => document.getElementById(id);
+  const form = $('form'), btn = $('btn'), err = $('err'), result = $('result');
+
+  const num = (v) => parseFloat(String(v).trim().replace(/\s/g, '').replace(',', '.'));
+  const fmt = (n, d = 2) => new Intl.NumberFormat('uk-UA', { minimumFractionDigits: d, maximumFractionDigits: d }).format(n);
+  const haptic = (type) => { try { tg && tg.HapticFeedback.notificationOccurred(type); } catch (e) {} };
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    err.textContent = '';
+
+    const currency = $('currency').value;
+    const amount = num($('amount').value);
+    const rate = num($('rate').value);
+    const commission = $('commission').value.trim() === '' ? 0 : num($('commission').value);
+
+    if (!(amount > 0)) return fail('Введіть коректну суму закупівлі.');
+    if (!(rate > 0)) return fail('Введіть коректний курс купівлі.');
+    if (isNaN(commission) || commission < 0 || commission > 20) return fail('Комісія має бути від 0 до 20%.');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Рахуємо…';
+
+    try {
+      const resp = await fetch(API_BASE + '/api/forecast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currency, amount, rate, commission,
+          init_data: tg ? tg.initData : ''
+        })
+      });
+      if (!resp.ok) {
+        let msg = 'Помилка сервера (' + resp.status + ').';
+        try { const j = await resp.json(); if (j.detail && typeof j.detail === 'string') msg = j.detail; } catch (_) {}
+        throw new Error(msg);
+      }
+      render(await resp.json(), currency);
+      haptic('success');
+    } catch (ex) {
+      fail(ex.message || 'Не вдалося отримати дані. Спробуйте ще раз.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Розрахувати та отримати прогноз';
+    }
+  });
+
+  function fail(msg) {
+    err.textContent = msg;
+    haptic('error');
+  }
+
+  function render(d, currency) {
+    $('r-invested').textContent = fmt(d.invested) + ' ₴';
+    $('r-current').textContent = fmt(d.current_rate, 4) + ' ₴';
+    $('r-forecast').textContent = fmt(d.forecast_rate, 4) + ' ₴';
+    $('r-revenue').textContent = fmt(d.revenue) + ' ₴';
+
+    const p = $('r-profit');
+    p.textContent = (d.profit > 0 ? '+' : '') + fmt(d.profit) + ' ₴';
+    p.className = 'profit ' + (d.profit >= 0 ? 'pos' : 'neg');
+    $('r-pct').textContent = (d.profit_pct > 0 ? '+' : '') + fmt(d.profit_pct) + '% до вкладень';
+
+    $('ai-text').textContent = d.analysis;
+    $('ai-source').textContent = d.ai_source === 'groq' ? 'ШІ-аналітика (Groq)' : 'Аналітика (на основі тренду НБУ)';
+
+    result.classList.add('show');
+    result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+})();
+</script>
+</body>
+</html>

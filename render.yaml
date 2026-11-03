@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: currency-tma
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: GROQ_API_KEY
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: REQUIRE_TG
+        value: "0"
